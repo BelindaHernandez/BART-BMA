@@ -1,9 +1,6 @@
 //This code will take the output of BART-BMA (list of sums of trees) and will update the predicted values for the terminal node
-//means and model variance
+//parameters and model variance
 
-//first take one set of sum of trees:
-//this will work for the training data only, this will be updated for test data as an optional parameter later on 
-//(will also have to update external predict function for test predictions)
 #include <RcppArmadillo.h>
 #include <Rcpp.h>
 using namespace Rcpp;
@@ -85,9 +82,6 @@ List update_Gibbs_mean_var(NumericMatrix tree_table,NumericVector resids,double 
 
   }  
   
-  //only thing changing is mu_ij the terminal node mean
-  //everything else was set outside the loop
-  std::cout<<"inside mean var "<<new_mean[0]<<"\n";
   update_params[0]=new_mean;
   update_params[1]=new_var;
   
@@ -99,16 +93,12 @@ List update_Gibbs_mean_var(NumericMatrix tree_table,NumericVector resids,double 
 double update_sigma(double a1,double b,NumericVector resids,int n){
   NumericVector sq_resid=resids*resids;
   double ssr= std::accumulate(sq_resid.begin(),sq_resid.end(),0.0);
-  
- // std::cout<<ssr;
   double shape=(a1+n/2);
   double rate =((ssr/2)+(1/b));
-  //std::cout<<"shape"<<shape<<" "<<"rate"<<rate;
   RNGScope scope;
   double tau =R::rgamma(shape,1/rate);
   double sigma = sqrt((1/tau));
   return sigma;
-//  return sigma;
 }
 
 //################################################################################################################################//
@@ -139,11 +129,10 @@ List get_tree_info(List overall_sum_trees,List overall_sum_mat,int num_obs){
       SEXP s = overall_sum_trees[i];
     
       NumericVector test_preds_sum_tree;
-      
-     // std::cout<<"in overall sum trees loop "<<"\n";
+    
       if(is<List>(s)){
-      //  std::cout<<"it was a list! i is "<<i<<"\n";
-        //if current set of trees contains more than one tree...usually does!
+      
+        //if current set of trees contains more than one tree
         List sum_tree=overall_sum_trees[i];
         
           List sum_tree_mat=overall_sum_mat[i];
@@ -155,28 +144,21 @@ List get_tree_info(List overall_sum_trees,List overall_sum_mat,int num_obs){
         NumericMatrix predictions(num_obs,sum_tree.size());
         
         for(int k =0;k<sum_tree.size();k++){
-         // std::cout<<"now looping through tree "<<k<< " in sum of trees "<<i<<"\n";
           
           NumericMatrix tree_table=sum_tree[k];
-        // std::cout<<"got tree table"<<"\n";
           NumericMatrix tree_mat=sum_tree_mat[k];
-        //  std::cout<<"got tree mat"<<"\n";
           NumericVector term_nodes=find_term_nodes(tree_table);
-        //  std::cout<<"got term nodes"<<"\n";
           term_nodes_trees[k]=term_nodes;
-        //  std::cout<<"got tree info "<<"\n";
           List term_obs_tree(term_nodes.size());
           NumericVector term_preds(num_obs);
           
           for(int j=0;j<term_nodes.size();j++){
-         //   std::cout<<"entered term node "<<j<<"in tree i"<<"\n";
              double terminal_node= term_nodes[j]; 
              NumericVector term_obs=find_term_obs(tree_mat,terminal_node);
             NumericVector node_means=find_node_means(tree_table,term_nodes);
              term_obs_tree[j]=term_obs;
              double node_mean=node_means[j];
              term_preds[term_obs]=node_mean; 
-
           }          
           term_obs_trees[k]=term_obs_tree;
                      
@@ -186,13 +168,8 @@ List get_tree_info(List overall_sum_trees,List overall_sum_mat,int num_obs){
         overall_term_obs_trees[i]= term_obs_trees;
         overall_predictions[i]=predictions;
       }else{
-       // std::cout<<"tree sum was a single tree "<<i<<"\n";
-      //  List sum_tree2= overall_sum_trees[i];
-      //  std::cout<<"got past here"<<"\n";
         NumericMatrix sum_tree=overall_sum_trees[i];
-      //  std::cout<<"made the tree mat"<<"\n";
         NumericMatrix tree_mat=overall_sum_mat[i];
-      //  std::cout<<"problem was here?"<<"\n";
         NumericVector term_nodes=find_term_nodes(sum_tree);
         NumericVector node_means=find_node_means(sum_tree,term_nodes);
         List term_obs_tree(term_nodes.size());
@@ -210,7 +187,6 @@ List get_tree_info(List overall_sum_trees,List overall_sum_mat,int num_obs){
         overall_predictions[i]=predictions;
       }  
   }    
-  //std::cout<<"about to return "<<"\n";
   List ret(3);
   ret[0]=overall_term_nodes_trees;
   ret[1]=overall_term_obs_trees;
@@ -335,10 +311,8 @@ List get_tree_info_test_data(NumericMatrix test_data,NumericMatrix tree_data) {
     if(curr_term % 2==0){
       //term node is left daughter
       row_index=terminal_nodes[i];
-    //  std::cout<<"term node is left daughter "<<terminal_nodes[i]<<" term mean is "<<term_node_means[i]<<"\n";
     }else{
       //term node is right daughter
-          //  std::cout<<"term node is right daughter "<<terminal_nodes[i]<<" term mean is "<<term_node_means[i]<<"\n";
       row_index=terminal_nodes[i]-1;
     }
     
@@ -364,11 +338,8 @@ List get_tree_info_test_data(NumericMatrix test_data,NumericMatrix tree_data) {
       
       node_split_mat.insert_rows(0,1);
       node_split_mat(0,0)=tree_data(parent_node[0],2);
-      std::cout<<"split var is "<<node_split_mat(0,0)<<"\n";
       node_split_mat(0,1)=tree_data(parent_node[0],3);
-      std::cout<<"split point is "<<node_split_mat(0,1)<<"\n";
-      node_split_mat(0,2)=rd;
-      
+      node_split_mat(0,2)=rd;     
       row_index=parent_node[0]+1;
       term_node=parent_node[0]+1;
     }
@@ -389,13 +360,11 @@ List get_tree_info_test_data(NumericMatrix test_data,NumericMatrix tree_data) {
     }
     
     arma::uvec temp_pred_indices;
-    //arma::uvec col_indices=seq_len(testd.n_cols);
     arma::vec data_subset = testd.col(split);
     data_subset=data_subset.elem(pred_indices);
     
     //now loop through each row of node_split_mat
     int n=node_split_mat.n_rows;
-    //std::cout<<"n is "<<n<<"\n";
     
     for(int j=1;j<n;j++){
       int curr_sv=node_split_mat(j,0);
@@ -407,26 +376,20 @@ List get_tree_info_test_data(NumericMatrix test_data,NumericMatrix tree_data) {
       if(node_split_mat(j,2)==0){
         //split is to the left
         temp_pred_indices=arma::find(data_subset <= split_p);
-        std::cout<<"the split was left "<<temp_pred_indices.size()<<"\n";
       }else{
         //split is to the right
         temp_pred_indices=arma::find(data_subset > split_p);
-       // std::cout<<"the spliut was right "<<temp_pred_indices.size()<<"\n";
       }
       pred_indices=pred_indices.elem(temp_pred_indices);
       
       if(pred_indices.size()==0){
-        //std::cout<<"no observations for this node "<<"\n";
         continue;
       }
     
     }
    
     double nodemean=tree_data(terminal_nodes[i]-1,5);
-    //std::cout<<"got the terminal node mean "<<nodemean<<"\n";
     IntegerVector predind=as<IntegerVector>(wrap(pred_indices));
-    //std::cout<<"converted predindices "<<"\n";
-    //std::cout<<"predictions size is "<<predictions.size()<<"\n";
     predictions[predind]= nodemean;
    term_obs[i]=predind;
   } 
@@ -434,7 +397,6 @@ List get_tree_info_test_data(NumericMatrix test_data,NumericMatrix tree_data) {
   ret[0] = terminal_nodes;
   ret[1] = term_obs;
   ret[2] = predictions;
-  std::cout<<"predictions for both observations: "<<predictions[0]<<" "<<predictions[1]<<"\n";
   return(ret);
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -453,29 +415,16 @@ List get_tree_info_testdata_overall(List overall_sum_trees,int num_obs,NumericMa
       SEXP s = overall_sum_trees[i];
     
       NumericVector test_preds_sum_tree;
-      
-     // std::cout<<"in overall sum trees loop "<<"\n";
       if(is<List>(s)){
-      //  std::cout<<"it was a list! i is "<<i<<"\n";
         //if current set of trees contains more than one tree...usually does!
-        List sum_tree=overall_sum_trees[i];
-        
-        //save all info in list of list format the same as the trees.
-        
+        List sum_tree=overall_sum_trees[i];        
+        //save all info in list of list format the same as the trees.       
         List term_nodes_trees(sum_tree.size());
         List term_obs_trees(sum_tree.size());
         NumericMatrix predictions(num_obs,sum_tree.size());
          
-        for(int k =0;k<sum_tree.size();k++){
-         // std::cout<<"now looping through tree "<<k<< " in sum of trees "<<i<<"\n";
-          
+        for(int k =0;k<sum_tree.size();k++){          
           NumericMatrix tree_table=sum_tree[k];
-        // std::cout<<"got tree table"<<"\n";
-         
-        //  std::cout<<"got tree mat"<<"\n";
-        //  NumericVector term_nodes=find_term_nodes(tree_table);
-        //  std::cout<<"got term nodes"<<"\n";
-       
           List tree_info=get_tree_info_test_data(test_data, tree_table) ;
           NumericVector term_nodes=tree_info[0];
           term_nodes_trees[k]=term_nodes;
@@ -487,15 +436,7 @@ List get_tree_info_testdata_overall(List overall_sum_trees,int num_obs,NumericMa
         overall_term_obs_trees[i]= term_obs_trees;
         overall_predictions[i]=predictions;
       }else{
-       // std::cout<<"tree sum was a single tree "<<i<<"\n";
-      //  List sum_tree2= overall_sum_trees[i];
-      //  std::cout<<"got past here"<<"\n";
         NumericMatrix sum_tree=overall_sum_trees[i];
-      //  std::cout<<"made the tree mat"<<"\n";
-       
-      //  std::cout<<"problem was here?"<<"\n";
-        
-        
           List tree_info=get_tree_info_test_data(test_data, sum_tree) ;
           overall_term_nodes_trees[i]=tree_info[0];
           List term_obs_tree=tree_info[1];
@@ -506,7 +447,6 @@ List get_tree_info_testdata_overall(List overall_sum_trees,int num_obs,NumericMa
         overall_predictions[i]=predictions;
       }  
   }    
-  //std::cout<<"about to return "<<"\n";
   List ret(3);
   ret[0]=overall_term_nodes_trees;
   ret[1]=overall_term_obs_trees;
@@ -519,12 +459,9 @@ List get_tree_info_testdata_overall(List overall_sum_trees,int num_obs,NumericMa
 // [[Rcpp::export]]
 
 List gibbs_sampler(List overall_sum_trees,List overall_sum_mat,NumericVector y,NumericVector BIC_weights,int num_iter,int burnin,int num_obs,int num_test_obs,double a,double sigma,double mu_mu,double nu,double lambda,List resids,NumericMatrix test_data){
-  //later need to separate the sums of trees in overall list into elements of sum_trees and sum_tree_mat
-  //then iterate through each individual tree.
   if(burnin>=num_iter){
     throw std::range_error("Number of iterations has to be greater than the number of burn-in samples");
   }
-  std::cout<<"entered the function!"<<overall_sum_trees.size() <<"\n";
   //get tree info just once don't repeat for each iteration:
   //need terminal nodes, terminal node means and observations terminal nodes refer to
   List tree_info=get_tree_info(overall_sum_trees,overall_sum_mat,num_obs);
@@ -533,28 +470,19 @@ List gibbs_sampler(List overall_sum_trees,List overall_sum_mat,NumericVector y,N
 
   double a1=nu/2;
   double b=2/(nu*lambda);
-  std::cout<<"got tree info"<<"\n"; 
   double sigma_init=sigma;
   List overall_term_nodes_trees=tree_info[0];
   List overall_term_obs_trees=tree_info[1];
   List overall_predictions=tree_info[2];
-  NumericVector y_scaled=scale_response(min(y),max(y),-0.5,0.5,y);
-  std::cout<<"got tree info2"<<"\n"; 
+  NumericVector y_scaled=scale_response(min(y),max(y),-0.5,0.5,y); 
   List prediction_list(overall_sum_trees.size());
   List prediction_list_orig(overall_sum_trees.size());
   List prediction_test_list(overall_sum_trees.size());
   List prediction_test_list_orig(overall_sum_trees.size());
   List overall_sum_trees1=clone(overall_sum_trees);
-  List overall_sum_mat1=clone(overall_sum_mat);
-  std::cout<<"got tree info3 "<<overall_sum_trees.size()<<"\n"; 
+  List overall_sum_mat1=clone(overall_sum_mat); 
   List sigma_chains(overall_sum_trees.size());
-   std::cout<<"got tree info4"<<"\n"; 
-//  IntegerVector tn=overall_term_nodes_trees[0];
-   std::cout<<"got tree info5"<<"\n"; 
-//  NumericMatrix muijtree1(num_iter,tn.size()); 
-  std::cout<<"about to loop through sum of trees"<<"\n";
   int one_tree=0;
- // List muijs(overall_sum_trees.size());
   for(int i=0;i<overall_sum_trees.size();i++){
     
     //for each set of trees loop over individual trees    
@@ -564,13 +492,9 @@ List gibbs_sampler(List overall_sum_trees,List overall_sum_mat,NumericVector y,N
     NumericVector test_preds_sum_tree;
     NumericMatrix sum_predictions;
     NumericMatrix sum_test_predictions;
-    std::cout<<"got sum of trees for list "<<i<<"\n";
-    
-    
-      
+   
       if(is<List>(s)){
-        std::cout<<"now going to update node means"<<"\n";
-        //if current set of trees contains more than one tree...usually does!
+        //if current set of trees contains more than one tree
         List sum_tree=overall_sum_trees1[i];
         List sum_tree_mat=overall_sum_mat1[i];
         List sum_term_nodes=overall_term_nodes_trees[i];
@@ -583,30 +507,24 @@ List gibbs_sampler(List overall_sum_trees,List overall_sum_mat,NumericVector y,N
         NumericMatrix post_predictions_orig(num_iter,num_obs);
         NumericMatrix post_test_predictions(num_iter,num_test_obs);
         NumericMatrix post_test_predictions_orig(num_iter,num_test_obs);
-       std::cout<<"matricews initialised"<<"\n";
         NumericMatrix sum_new_predictions(sum_predictions.nrow(),sum_predictions.ncol());
          NumericMatrix sum_new_test_predictions(sum_predictions.nrow(),sum_predictions.ncol());
-    //    post_predictions=temp;
-    //    post_predictions_orig=temp;
+
         for(int j=0;j<num_iter;j++){
           for(int k =0;k<sum_tree.size();k++){
-          std::cout<<"tree "<<j<<"is list of trees looping through "<<k<<"th tree"<<"\n";
           NumericMatrix tree_table=sum_tree[k];
           IntegerMatrix tree_mat=sum_tree_mat[k];
           //find terminal node means and observations associated with them
           IntegerVector term_nodes=sum_term_nodes[k];
           List term_obs=sum_term_obs[k];
            List term_test_obs=sum_term_test_obs[k];
-        //  NumericVector predictions=sum_predictions(_,k);
           NumericVector predictions=sum_resids[k];
           //current predictions are the residuals for sum of trees!
             
           //update the means and predictions for tree
           List new_node_mean_var=update_Gibbs_mean_var(tree_table,predictions,a,sigma,mu_mu,term_nodes,term_obs);
-        //  NumericVector new_node_mean=new_node_mean_var[0];
            NumericVector new_node_mean=get_new_mean(term_nodes,new_node_mean_var);
           NumericVector new_node_var=new_node_mean_var[1];
-          std::cout<<"updated mean and var"<<"\n";
           //update predictions by setting predicted value for term_obs[termnode]=new mean value!
           
           List updated_preds=update_predictions(tree_table,new_node_mean,new_node_var,num_obs,term_nodes,term_obs);         
@@ -617,19 +535,7 @@ List gibbs_sampler(List overall_sum_trees,List overall_sum_mat,NumericVector y,N
           List updated_test_preds=update_predictions(tree_table,new_node_mean,new_node_var,num_obs,term_nodes,term_test_obs);         
           NumericVector temp_test_preds=updated_test_preds[1];
           sum_new_test_predictions(_,k)=temp_test_preds;
-          std::cout<<"and predictions..."<<"\n";
-          //update sigma
-//          NumericVector pred_obs1=calc_rowsums(sum_predictions);
-         // NumericVector S=calculate_resids(sum_predictions,y_scaled);  
-          
-         /* if(i==0&&j==0){
-            List ret(3);
-            ret[0]=sum_predictions;
-            ret[1]=S;
-            ret[2]=y_scaled;
-            return(ret);
-          }
-        */  
+ 
           //get overall predictions for current iteration and current sum of trees
           sigma= update_sigma(a1,b,predictions,num_obs);
           sigma_its[j]=sigma;
@@ -644,12 +550,10 @@ List gibbs_sampler(List overall_sum_trees,List overall_sum_mat,NumericVector y,N
         NumericVector original_test_y=get_original(min(y),max(y),-0.5,0.5,pred_test_obs);    
         post_test_predictions_orig(j,_)=original_test_y;
 
-        std::cout<<"left iterations of sum of trees "<<i<<" post pred dims "<<post_predictions.nrow()<<" "<<post_predictions.ncol() <<"\n";
         prediction_list[i]=post_predictions;
         prediction_list_orig[i]=post_predictions_orig;
         prediction_test_list[i]=post_test_predictions;
         prediction_test_list_orig[i]=post_test_predictions_orig;
-        std::cout<<"set predictions"<<"\n";
       }
      sigma_chains[i]=sigma_its;
       
@@ -657,38 +561,22 @@ List gibbs_sampler(List overall_sum_trees,List overall_sum_mat,NumericVector y,N
         
         one_tree=1;
       }  
-      
-      
-    
-    
-   /* if(i==0){
-      List ret(2);
-      ret[0]= prediction_list;
-      ret[1]= prediction_list_orig;
-      return(ret);
-    }
-  */  
     
   }
   
   if(one_tree==1){
-    
-    std::cout<<"only one tree!"<<"\n";
     NumericVector sigma_its(num_iter);
     NumericMatrix post_predictions(num_iter,num_obs);
     NumericMatrix post_predictions_orig(num_iter,num_obs);
     NumericMatrix post_test_predictions(num_iter,num_obs);
     NumericMatrix post_test_predictions_orig(num_iter,num_obs);
-
-    std::cout<<"overall predictions size is "<<overall_predictions.size()<<" tree size "<<overall_sum_trees.size()<<"\n";
     NumericMatrix sum_predictions(num_obs,overall_predictions.size());
      NumericMatrix sum_test_predictions(num_test_obs,overall_predictions.size());
     for(int t=0;t<overall_predictions.size();t++){
           NumericVector preds=overall_predictions[t];
           sum_predictions(_,t)=preds;
     }
- //   NumericVector overallsigma(num_iter*overall_sum_trees.size());
- //   int count=0;
+
     for(int j=0;j<num_iter;j++){
     for(int i=0;i<overall_sum_trees.size();i++){
       
@@ -697,55 +585,28 @@ List gibbs_sampler(List overall_sum_trees,List overall_sum_mat,NumericVector y,N
       IntegerVector term_nodes=overall_term_nodes_trees[i];
       List term_obs=overall_term_obs_trees[i];
       List term_test_obs=overall_term_test_obs_trees[i];
-     // NumericVector predictions=sum_predictions(_,i);
-     std::cout<<"about to get predictions";
       NumericVector predictions=resids[i];
-      std::cout<<"got them";
-   //   NumericMatrix temp_predy=remove_curr_col(sum_predictions,i);
-      
-  //    NumericVector predictions=calculate_resids(temp_predy,y_scaled);
-      
-      
-          //find terminal node means and observations associated with them
+      //find terminal node means and observations associated with them
           
-          //current predictions are the residuals for sum of trees!
+      //current predictions are the residuals for sum of trees
             
-          //update the means and predictions for tree
-          List new_node_mean_var=update_Gibbs_mean_var(tree_table,predictions,a,sigma,mu_mu,term_nodes,term_obs);
-           NumericVector new_node_mean=get_new_mean(term_nodes,new_node_mean_var);
-        //  NumericVector new_node_mean=new_node_mean_var[0];
-          NumericVector new_node_var=new_node_mean_var[1];
-          //if(i==0){
-         //   muijtree1(j,_)=new_node_mean;
-         // }
-          std::cout<<"updated mean and var "<<new_node_mean[0]<<" "<<sigma<<"\n";
-          //update predictions by setting predicted value for term_obs[termnode]=new mean value!
-          std::cout<<"pred before update "<< sum_predictions(0,i)<<"\n";
-          List updated_preds=update_predictions(tree_table,new_node_mean,new_node_var,num_obs,term_nodes,term_obs);         
-          NumericVector temp_preds=updated_preds[1];
-          sum_predictions(_,i)=temp_preds;
+      //update the means and predictions for tree
+      List new_node_mean_var=update_Gibbs_mean_var(tree_table,predictions,a,sigma,mu_mu,term_nodes,term_obs);
+      NumericVector new_node_mean=get_new_mean(term_nodes,new_node_mean_var);      
+      NumericVector new_node_var=new_node_mean_var[1];
+      List updated_preds=update_predictions(tree_table,new_node_mean,new_node_var,num_obs,term_nodes,term_obs);         
+      NumericVector temp_preds=updated_preds[1];
+      sum_predictions(_,i)=temp_preds;
         
-        //get updated predictions for the test data
-         List updated_test_preds=update_predictions(tree_table,new_node_mean,new_node_var,num_test_obs,term_nodes,term_test_obs);         
-        NumericVector temp_test_preds=updated_test_preds[1];
-        sum_predictions(_,i)=temp_preds;
-         sum_test_predictions(_,i)=temp_test_preds;
-        //  std::cout<<"and predictions..."<<temp_preds[0]<<"\n";
-          //update sigma
-        //NumericVector pred_obs1=calc_rowsums(sum_predictions);
-          NumericVector S=calculate_resids(sum_predictions,y_scaled);  
-      
+      //get updated predictions for the test data
+      List updated_test_preds=update_predictions(tree_table,new_node_mean,new_node_var,num_test_obs,term_nodes,term_test_obs);         
+      NumericVector temp_test_preds=updated_test_preds[1];
+      sum_predictions(_,i)=temp_preds;
+      sum_test_predictions(_,i)=temp_test_preds;
+      NumericVector S=calculate_resids(sum_predictions,y_scaled);  
           //get overall predictions for current iteration and current sum of trees
           sigma= update_sigma(a1,b,S,num_obs);
           sigma_its[j]=sigma;
-      //  overallsigma[count]=sigma;
-     //   count++;
-        
-       
-    //    std::cout<<"left iterations of sum of trees "<<i<<" post pred dims "<<post_predictions.nrow()<<" "<<post_predictions.ncol() <<"\n";
-        
-  //      std::cout<<"set predictions"<<"\n";
-       // muijs[i]=muijtree;
       }
         NumericVector pred_obs=calc_rowsums(sum_predictions);
         NumericVector pred_test_obs=calc_rowsums(sum_test_predictions);
@@ -764,30 +625,19 @@ List gibbs_sampler(List overall_sum_trees,List overall_sum_mat,NumericVector y,N
    prediction_test_list=clone(g);
   prediction_test_list_orig=clone(g);
   sigma_chains[0]=sigma_its;
- // sigma_chains[0]=overallsigma;
-  std::cout<<"sigma its "<<sigma_its[0]<<" "<<sigma_its[1]<<"\n";
   NumericVector test2=sigma_chains[0];
-  std::cout<<"sigma chains "<<test2[0]<<" "<<test2[1]<<"\n";
   prediction_list[0]=post_predictions;
-  std::cout<<"got here"<<"\n";
   prediction_list_orig[0]=post_predictions_orig;
    prediction_test_list[0]=post_test_predictions;
   prediction_test_list_orig[0]=post_test_predictions_orig;
-   std::cout<<"about to go around again!"<<"\n";
   }
   
   List ret(5);
   NumericVector test2=sigma_chains[0];
-  std::cout<<"sigma chains1 "<<test2[0]<<" "<<test2[1]<<"\n";
   ret[0]= prediction_list;
   ret[1]= prediction_list_orig;
   ret[2]=sigma_chains;
   ret[3]=prediction_test_list;
   ret[4]=prediction_test_list_orig;
-//  ret[3]=muijtree1;
-  return(ret);
-  
-  std::cout<<"at very end going to return"<<"\n";
-  //at the end add all the predicted values up to get the overall prediction 
- 
+  return(ret); 
 }
