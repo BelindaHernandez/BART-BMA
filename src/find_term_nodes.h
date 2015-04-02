@@ -2,6 +2,7 @@
 #include <Rcpp.h>
 using namespace Rcpp;
 // [[Rcpp::export]]
+// [[Rcpp::depends(RcppArmadillo)]]
 
 NumericVector find_term_nodes(NumericMatrix tree_table){
   //NumericVector terminal_nodes;
