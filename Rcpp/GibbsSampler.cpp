@@ -1,6 +1,9 @@
 //This code will take the output of BART-BMA (list of sums of trees) and will update the predicted values for the terminal node
-//parameters and model variance
+//means and model variance
 
+//first take one set of sum of trees:
+//this will work for the training data only, this will be updated for test data as an optional parameter later on 
+//(will also have to update external predict function for test predictions)
 #include <RcppArmadillo.h>
 #include <Rcpp.h>
 using namespace Rcpp;
@@ -38,7 +41,7 @@ NumericVector find_term_obs(NumericMatrix tree_matrix_temp,double terminal_node)
 //################################################################################################################################//
 // [[Rcpp::export]]
 NumericVector calc_rowsums(NumericMatrix predictions){
-   arma::mat M1(predictions.begin(), predictions.nrow(), predictions.ncol(), false);
+  arma::mat M1(predictions.begin(), predictions.nrow(), predictions.ncol(), false);
   arma::colvec predicted_values=sum(M1,1);
   return(wrap(predicted_values));
 }
@@ -125,67 +128,66 @@ List get_tree_info(List overall_sum_trees,List overall_sum_mat,int num_obs){
   List overall_predictions(overall_sum_trees.size());
         
   for(int i=0;i<overall_sum_trees.size();i++){
-      //for each set of trees loop over individual trees
-      SEXP s = overall_sum_trees[i];
+    //for each set of trees loop over individual trees
+    SEXP s = overall_sum_trees[i];
+  
+    NumericVector test_preds_sum_tree;
     
-      NumericVector test_preds_sum_tree;
-    
-      if(is<List>(s)){
+    if(is<List>(s)){
+      //if current set of trees contains more than one tree
+      List sum_tree=overall_sum_trees[i];
       
-        //if current set of trees contains more than one tree
-        List sum_tree=overall_sum_trees[i];
+      List sum_tree_mat=overall_sum_mat[i];
+      
+      //save all info in list of list format the same as the trees.
+      
+      List term_nodes_trees(sum_tree.size());
+      List term_obs_trees(sum_tree.size());
+      NumericMatrix predictions(num_obs,sum_tree.size());
+      
+      for(int k =0;k<sum_tree.size();k++){
         
-          List sum_tree_mat=overall_sum_mat[i];
-        
-        //save all info in list of list format the same as the trees.
-        
-        List term_nodes_trees(sum_tree.size());
-        List term_obs_trees(sum_tree.size());
-        NumericMatrix predictions(num_obs,sum_tree.size());
-        
-        for(int k =0;k<sum_tree.size();k++){
-          
-          NumericMatrix tree_table=sum_tree[k];
-          NumericMatrix tree_mat=sum_tree_mat[k];
-          NumericVector term_nodes=find_term_nodes(tree_table);
-          term_nodes_trees[k]=term_nodes;
-          List term_obs_tree(term_nodes.size());
-          NumericVector term_preds(num_obs);
-          
-          for(int j=0;j<term_nodes.size();j++){
-             double terminal_node= term_nodes[j]; 
-             NumericVector term_obs=find_term_obs(tree_mat,terminal_node);
-            NumericVector node_means=find_node_means(tree_table,term_nodes);
-             term_obs_tree[j]=term_obs;
-             double node_mean=node_means[j];
-             term_preds[term_obs]=node_mean; 
-          }          
-          term_obs_trees[k]=term_obs_tree;
-                     
-          predictions(_,k)=term_preds;
-        } 
-        overall_term_nodes_trees[i]=term_nodes_trees;
-        overall_term_obs_trees[i]= term_obs_trees;
-        overall_predictions[i]=predictions;
-      }else{
-        NumericMatrix sum_tree=overall_sum_trees[i];
-        NumericMatrix tree_mat=overall_sum_mat[i];
-        NumericVector term_nodes=find_term_nodes(sum_tree);
-        NumericVector node_means=find_node_means(sum_tree,term_nodes);
+        NumericMatrix tree_table=sum_tree[k];
+        NumericMatrix tree_mat=sum_tree_mat[k];
+        NumericVector term_nodes=find_term_nodes(tree_table);
+        term_nodes_trees[k]=term_nodes;
         List term_obs_tree(term_nodes.size());
-        overall_term_nodes_trees[i]=term_nodes;
-        NumericVector predictions(num_obs);
+        NumericVector term_preds(num_obs);
         
         for(int j=0;j<term_nodes.size();j++){
-          double terminal_node= term_nodes[j];
-          double node_mean=node_means[j];
+          double terminal_node= term_nodes[j]; 
           NumericVector term_obs=find_term_obs(tree_mat,terminal_node);
+          NumericVector node_means=find_node_means(tree_table,term_nodes);
           term_obs_tree[j]=term_obs;
-          predictions[term_obs]=node_mean;
-        }
-        overall_term_obs_trees[i]= term_obs_tree;
-        overall_predictions[i]=predictions;
-      }  
+          double node_mean=node_means[j];
+          term_preds[term_obs]=node_mean; 
+        }          
+        term_obs_trees[k]=term_obs_tree;
+                   
+        predictions(_,k)=term_preds;
+      } 
+      overall_term_nodes_trees[i]=term_nodes_trees;
+      overall_term_obs_trees[i]= term_obs_trees;
+      overall_predictions[i]=predictions;
+    }else{
+      NumericMatrix sum_tree=overall_sum_trees[i];
+      NumericMatrix tree_mat=overall_sum_mat[i];
+      NumericVector term_nodes=find_term_nodes(sum_tree);
+      NumericVector node_means=find_node_means(sum_tree,term_nodes);
+      List term_obs_tree(term_nodes.size());
+      overall_term_nodes_trees[i]=term_nodes;
+      NumericVector predictions(num_obs);
+      
+      for(int j=0;j<term_nodes.size();j++){
+        double terminal_node= term_nodes[j];
+        double node_mean=node_means[j];
+        NumericVector term_obs=find_term_obs(tree_mat,terminal_node);
+        term_obs_tree[j]=term_obs;
+        predictions[term_obs]=node_mean;
+      }
+      overall_term_obs_trees[i]= term_obs_tree;
+      overall_predictions[i]=predictions;
+    }  
   }    
   List ret(3);
   ret[0]=overall_term_nodes_trees;
@@ -222,7 +224,8 @@ NumericVector get_new_mean(IntegerVector terminal_nodes,List new_mean_var){
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // [[Rcpp::export]]
 List update_predictions(NumericMatrix tree_table,NumericVector new_mean,NumericVector new_var,int n,
-      IntegerVector terminal_nodes,List term_obs_tree){
+  IntegerVector terminal_nodes,List term_obs_tree){
+    
   List updated_preds(2);
   NumericVector new_preds(n);
   
@@ -235,9 +238,6 @@ List update_predictions(NumericMatrix tree_table,NumericVector new_mean,NumericV
     double newmean=new_mean[k];
     //update residuals for next iteration
     new_preds[term_obs]=newmean;
-    //for(int i=0;i<term_obs.size();i++){
-    //  new_preds[term_obs[i]]=new_mean[k];
-    //}
   }
   
   updated_preds[0]=tree_table;
@@ -284,8 +284,7 @@ List get_tree_info_test_data(NumericMatrix test_data,NumericMatrix tree_data) {
   // Function to make predictions from test data, given a single tree and the terminal node predictions, this function will be called
   //for each tree accepted in Occam's Window.
   
-  //test_data is a nxp matrix with the same variable names as the training data the model was built on...
-  //should have an error check for this later on or at least check it's the same dimension
+  //test_data is a nxp matrix with the same variable names as the training data the model was built on
   
   //tree_data is the tree table with the tree information i.e. split points and split variables and terminal node mean values
   
@@ -355,8 +354,7 @@ List get_tree_info_test_data(NumericMatrix test_data,NumericMatrix tree_data) {
     if(node_split_mat(0,2)==0){
       pred_indices = arma::find(tempvec <= temp_split);
     }else{
-      pred_indices = arma::find(tempvec > temp_split);
-      
+      pred_indices = arma::find(tempvec > temp_split);      
     }
     
     arma::uvec temp_pred_indices;
@@ -388,10 +386,10 @@ List get_tree_info_test_data(NumericMatrix test_data,NumericMatrix tree_data) {
     
     }
    
-    double nodemean=tree_data(terminal_nodes[i]-1,5);
-    IntegerVector predind=as<IntegerVector>(wrap(pred_indices));
-    predictions[predind]= nodemean;
-   term_obs[i]=predind;
+  double nodemean=tree_data(terminal_nodes[i]-1,5);
+  IntegerVector predind=as<IntegerVector>(wrap(pred_indices));
+  predictions[predind]= nodemean;
+  term_obs[i]=predind;
   } 
   List ret(3);
   ret[0] = terminal_nodes;
@@ -411,41 +409,40 @@ List get_tree_info_testdata_overall(List overall_sum_trees,int num_obs,NumericMa
   List overall_predictions(overall_sum_trees.size());
         
   for(int i=0;i<overall_sum_trees.size();i++){
-      //for each set of trees loop over individual trees
-      SEXP s = overall_sum_trees[i];
+    //for each set of trees loop over individual trees
+    SEXP s = overall_sum_trees[i];
     
-      NumericVector test_preds_sum_tree;
-      if(is<List>(s)){
-        //if current set of trees contains more than one tree...usually does!
-        List sum_tree=overall_sum_trees[i];        
-        //save all info in list of list format the same as the trees.       
-        List term_nodes_trees(sum_tree.size());
-        List term_obs_trees(sum_tree.size());
-        NumericMatrix predictions(num_obs,sum_tree.size());
-         
-        for(int k =0;k<sum_tree.size();k++){          
-          NumericMatrix tree_table=sum_tree[k];
-          List tree_info=get_tree_info_test_data(test_data, tree_table) ;
-          NumericVector term_nodes=tree_info[0];
-          term_nodes_trees[k]=term_nodes;
-          term_obs_trees[k]=tree_info[1];
-          NumericVector term_preds=tree_info[2];
-          predictions(_,k)=term_preds;
-        } 
-        overall_term_nodes_trees[i]=term_nodes_trees;
-        overall_term_obs_trees[i]= term_obs_trees;
-        overall_predictions[i]=predictions;
-      }else{
-        NumericMatrix sum_tree=overall_sum_trees[i];
-          List tree_info=get_tree_info_test_data(test_data, sum_tree) ;
-          overall_term_nodes_trees[i]=tree_info[0];
-          List term_obs_tree=tree_info[1];
-          NumericVector term_preds=tree_info[2];
-          NumericVector predictions=term_preds;
-          
-        overall_term_obs_trees[i]= term_obs_tree;
-        overall_predictions[i]=predictions;
-      }  
+    NumericVector test_preds_sum_tree;
+    if(is<List>(s)){
+      //if current set of trees contains more than one tree...usually does!
+      List sum_tree=overall_sum_trees[i];        
+      //save all info in list of list format the same as the trees.       
+      List term_nodes_trees(sum_tree.size());
+      List term_obs_trees(sum_tree.size());
+      NumericMatrix predictions(num_obs,sum_tree.size());
+       
+      for(int k =0;k<sum_tree.size();k++){          
+        NumericMatrix tree_table=sum_tree[k];
+        List tree_info=get_tree_info_test_data(test_data, tree_table) ;
+        NumericVector term_nodes=tree_info[0];
+        term_nodes_trees[k]=term_nodes;
+        term_obs_trees[k]=tree_info[1];
+        NumericVector term_preds=tree_info[2];
+        predictions(_,k)=term_preds;
+      } 
+      overall_term_nodes_trees[i]=term_nodes_trees;
+      overall_term_obs_trees[i]= term_obs_trees;
+      overall_predictions[i]=predictions;
+    }else{
+      NumericMatrix sum_tree=overall_sum_trees[i];
+      List tree_info=get_tree_info_test_data(test_data, sum_tree) ;
+      overall_term_nodes_trees[i]=tree_info[0];
+      List term_obs_tree=tree_info[1];
+      NumericVector term_preds=tree_info[2];
+      NumericVector predictions=term_preds;   
+      overall_term_obs_trees[i]= term_obs_tree;
+      overall_predictions[i]=predictions;
+    }  
   }    
   List ret(3);
   ret[0]=overall_term_nodes_trees;
@@ -508,7 +505,7 @@ List gibbs_sampler(List overall_sum_trees,List overall_sum_mat,NumericVector y,N
         NumericMatrix post_test_predictions(num_iter,num_test_obs);
         NumericMatrix post_test_predictions_orig(num_iter,num_test_obs);
         NumericMatrix sum_new_predictions(sum_predictions.nrow(),sum_predictions.ncol());
-         NumericMatrix sum_new_test_predictions(sum_predictions.nrow(),sum_predictions.ncol());
+        NumericMatrix sum_new_test_predictions(sum_predictions.nrow(),sum_predictions.ncol());
 
         for(int j=0;j<num_iter;j++){
           for(int k =0;k<sum_tree.size();k++){
@@ -517,13 +514,13 @@ List gibbs_sampler(List overall_sum_trees,List overall_sum_mat,NumericVector y,N
           //find terminal node means and observations associated with them
           IntegerVector term_nodes=sum_term_nodes[k];
           List term_obs=sum_term_obs[k];
-           List term_test_obs=sum_term_test_obs[k];
+          List term_test_obs=sum_term_test_obs[k];
           NumericVector predictions=sum_resids[k];
           //current predictions are the residuals for sum of trees!
             
           //update the means and predictions for tree
           List new_node_mean_var=update_Gibbs_mean_var(tree_table,predictions,a,sigma,mu_mu,term_nodes,term_obs);
-           NumericVector new_node_mean=get_new_mean(term_nodes,new_node_mean_var);
+          NumericVector new_node_mean=get_new_mean(term_nodes,new_node_mean_var);
           NumericVector new_node_var=new_node_mean_var[1];
           //update predictions by setting predicted value for term_obs[termnode]=new mean value!
           
@@ -555,13 +552,11 @@ List gibbs_sampler(List overall_sum_trees,List overall_sum_mat,NumericVector y,N
         prediction_test_list[i]=post_test_predictions;
         prediction_test_list_orig[i]=post_test_predictions_orig;
       }
-     sigma_chains[i]=sigma_its;
+      sigma_chains[i]=sigma_its;
       
-      }else{
-        
+      }else{        
         one_tree=1;
-      }  
-    
+      }      
   }
   
   if(one_tree==1){
@@ -571,65 +566,64 @@ List gibbs_sampler(List overall_sum_trees,List overall_sum_mat,NumericVector y,N
     NumericMatrix post_test_predictions(num_iter,num_obs);
     NumericMatrix post_test_predictions_orig(num_iter,num_obs);
     NumericMatrix sum_predictions(num_obs,overall_predictions.size());
-     NumericMatrix sum_test_predictions(num_test_obs,overall_predictions.size());
+    NumericMatrix sum_test_predictions(num_test_obs,overall_predictions.size());
     for(int t=0;t<overall_predictions.size();t++){
-          NumericVector preds=overall_predictions[t];
-          sum_predictions(_,t)=preds;
+      NumericVector preds=overall_predictions[t];
+      sum_predictions(_,t)=preds;
     }
 
     for(int j=0;j<num_iter;j++){
-    for(int i=0;i<overall_sum_trees.size();i++){
-      
-      NumericMatrix tree_table=overall_sum_trees1[i];
-      IntegerMatrix tree_mat=overall_sum_mat1[i];
-      IntegerVector term_nodes=overall_term_nodes_trees[i];
-      List term_obs=overall_term_obs_trees[i];
-      List term_test_obs=overall_term_test_obs_trees[i];
-      NumericVector predictions=resids[i];
-      //find terminal node means and observations associated with them
-          
-      //current predictions are the residuals for sum of trees
+      for(int i=0;i<overall_sum_trees.size();i++){     
+        NumericMatrix tree_table=overall_sum_trees1[i];
+        IntegerMatrix tree_mat=overall_sum_mat1[i];
+        IntegerVector term_nodes=overall_term_nodes_trees[i];
+        List term_obs=overall_term_obs_trees[i];
+        List term_test_obs=overall_term_test_obs_trees[i];
+        NumericVector predictions=resids[i];
+        //find terminal node means and observations associated with them
             
-      //update the means and predictions for tree
-      List new_node_mean_var=update_Gibbs_mean_var(tree_table,predictions,a,sigma,mu_mu,term_nodes,term_obs);
-      NumericVector new_node_mean=get_new_mean(term_nodes,new_node_mean_var);      
-      NumericVector new_node_var=new_node_mean_var[1];
-      List updated_preds=update_predictions(tree_table,new_node_mean,new_node_var,num_obs,term_nodes,term_obs);         
-      NumericVector temp_preds=updated_preds[1];
-      sum_predictions(_,i)=temp_preds;
-        
-      //get updated predictions for the test data
-      List updated_test_preds=update_predictions(tree_table,new_node_mean,new_node_var,num_test_obs,term_nodes,term_test_obs);         
-      NumericVector temp_test_preds=updated_test_preds[1];
-      sum_predictions(_,i)=temp_preds;
-      sum_test_predictions(_,i)=temp_test_preds;
-      NumericVector S=calculate_resids(sum_predictions,y_scaled);  
-          //get overall predictions for current iteration and current sum of trees
-          sigma= update_sigma(a1,b,S,num_obs);
-          sigma_its[j]=sigma;
+        //current predictions are the residuals for sum of trees
+              
+        //update the means and predictions for tree
+        List new_node_mean_var=update_Gibbs_mean_var(tree_table,predictions,a,sigma,mu_mu,term_nodes,term_obs);
+        NumericVector new_node_mean=get_new_mean(term_nodes,new_node_mean_var);      
+        NumericVector new_node_var=new_node_mean_var[1];
+        List updated_preds=update_predictions(tree_table,new_node_mean,new_node_var,num_obs,term_nodes,term_obs);         
+        NumericVector temp_preds=updated_preds[1];
+        sum_predictions(_,i)=temp_preds;
+          
+        //get updated predictions for the test data
+        List updated_test_preds=update_predictions(tree_table,new_node_mean,new_node_var,num_test_obs,term_nodes,term_test_obs);         
+        NumericVector temp_test_preds=updated_test_preds[1];
+        sum_predictions(_,i)=temp_preds;
+        sum_test_predictions(_,i)=temp_test_preds;
+        NumericVector S=calculate_resids(sum_predictions,y_scaled);  
+        //get overall predictions for current iteration and current sum of trees
+        sigma= update_sigma(a1,b,S,num_obs);
+        sigma_its[j]=sigma;
       }
-        NumericVector pred_obs=calc_rowsums(sum_predictions);
-        NumericVector pred_test_obs=calc_rowsums(sum_test_predictions);
-        post_predictions(j,_)=pred_obs;
-        post_test_predictions(j,_)=pred_test_obs;
-        NumericVector original_y=get_original(min(y),max(y),-0.5,0.5,pred_obs);   
-        NumericVector original_test_y=get_original(min(y),max(y),-0.5,0.5,pred_test_obs);   
-        post_predictions_orig(j,_)=original_y;
-        post_test_predictions_orig(j,_)=original_test_y;
-  }
+      NumericVector pred_obs=calc_rowsums(sum_predictions);
+      NumericVector pred_test_obs=calc_rowsums(sum_test_predictions);
+      post_predictions(j,_)=pred_obs;
+      post_test_predictions(j,_)=pred_test_obs;
+      NumericVector original_y=get_original(min(y),max(y),-0.5,0.5,pred_obs);   
+      NumericVector original_test_y=get_original(min(y),max(y),-0.5,0.5,pred_test_obs);   
+      post_predictions_orig(j,_)=original_y;
+      post_test_predictions_orig(j,_)=original_test_y;
+    }
   
-  List g(1);
-  sigma_chains=clone(g);
-  prediction_list=clone(g);
-  prediction_list_orig=clone(g);
-   prediction_test_list=clone(g);
-  prediction_test_list_orig=clone(g);
-  sigma_chains[0]=sigma_its;
-  NumericVector test2=sigma_chains[0];
-  prediction_list[0]=post_predictions;
-  prediction_list_orig[0]=post_predictions_orig;
-   prediction_test_list[0]=post_test_predictions;
-  prediction_test_list_orig[0]=post_test_predictions_orig;
+    List g(1);
+    sigma_chains=clone(g);
+    prediction_list=clone(g);
+    prediction_list_orig=clone(g);
+    prediction_test_list=clone(g);
+    prediction_test_list_orig=clone(g);
+    sigma_chains[0]=sigma_its;
+    NumericVector test2=sigma_chains[0];
+    prediction_list[0]=post_predictions;
+    prediction_list_orig[0]=post_predictions_orig;
+    prediction_test_list[0]=post_test_predictions;
+    prediction_test_list_orig[0]=post_test_predictions_orig;
   }
   
   List ret(5);
